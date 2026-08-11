@@ -1,0 +1,3 @@
+# Personal, machine-specific Claude Code overrides — never commit these.
+# settings.local.json overrides the shared settings.json for one developer.
+settings.local.json
