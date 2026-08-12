@@ -1,6 +1,7 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
+import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
@@ -25,6 +26,7 @@ import {
 } from "../auth.validation";
 import { createAuthGateway } from "../gateway/create-auth-gateway";
 import type { AuthGateway } from "../gateway/auth-gateway";
+import { currentUserQueryKey } from "../hooks/use-current-user";
 
 const EMAIL_ERROR_ID = "login-email-error";
 const PASSWORD_ERROR_ID = "login-password-error";
@@ -33,6 +35,7 @@ const PASSWORD_ERROR_ID = "login-password-error";
  *  HTTP gateway lazily so a fake can be supplied without touching the network. */
 export function LoginForm({ gateway }: { gateway?: AuthGateway }) {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [formError, setFormError] = useState<string | null>(null);
 
   const {
@@ -57,7 +60,10 @@ export function LoginForm({ gateway }: { gateway?: AuthGateway }) {
       // Resolve the gateway lazily so the page still renders when the backend
       // URL is unconfigured — only submitting surfaces the error.
       const authGateway = gateway ?? createAuthGateway();
-      await authGateway.signIn(values);
+      const user = await authGateway.signIn(values);
+      // Seed the header's account query so it shows the real Member immediately
+      // instead of re-fetching GET /users/me after the redirect.
+      queryClient.setQueryData(currentUserQueryKey, user);
       // On success the backend has set the session cookie; land on the Homepage.
       // refresh() invalidates the Router Cache so the destination re-renders with
       // the new session instead of a cached logged-out payload.

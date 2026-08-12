@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -11,13 +12,28 @@ import { AuthError } from "../auth-errors";
 import type { AuthGateway } from "../gateway/auth-gateway";
 import { RegisterForm } from "./register-form";
 
+const testUser = {
+  id: 1,
+  email: "user@example.com",
+  fullName: "Maya Lindqvist",
+  role: "member" as const,
+};
+
 function makeGateway(overrides: Partial<AuthGateway> = {}): AuthGateway {
   return {
-    signIn: vi.fn().mockResolvedValue(undefined),
-    register: vi.fn().mockResolvedValue(undefined),
+    signIn: vi.fn().mockResolvedValue(testUser),
+    register: vi.fn().mockResolvedValue(testUser),
     requestPasswordReset: vi.fn().mockResolvedValue(undefined),
+    getCurrentUser: vi.fn().mockResolvedValue(null),
     ...overrides,
   };
+}
+
+function renderWithProviders(ui: React.ReactElement) {
+  const queryClient = new QueryClient();
+  return render(
+    <QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>,
+  );
 }
 
 async function fillForm({
@@ -39,7 +55,7 @@ beforeEach(() => push.mockClear());
 
 describe("RegisterForm validation", () => {
   it("keeps Create account disabled until every field is filled", async () => {
-    render(<RegisterForm gateway={makeGateway()} />);
+    renderWithProviders(<RegisterForm gateway={makeGateway()} />);
     const submit = screen.getByRole("button", { name: "Create account" });
 
     expect(submit).toBeDisabled();
@@ -53,7 +69,7 @@ describe("RegisterForm validation", () => {
 
   it("rejects a password that misses the length/letter/number rule", async () => {
     const gateway = makeGateway();
-    render(<RegisterForm gateway={gateway} />);
+    renderWithProviders(<RegisterForm gateway={gateway} />);
 
     await fillForm({ password: "abcdefg", confirmPassword: "abcdefg" });
     await userEvent.click(screen.getByRole("button", { name: "Create account" }));
@@ -66,7 +82,7 @@ describe("RegisterForm validation", () => {
 
   it("blocks submission when the passwords do not match", async () => {
     const gateway = makeGateway();
-    render(<RegisterForm gateway={gateway} />);
+    renderWithProviders(<RegisterForm gateway={gateway} />);
 
     await fillForm({ password: "Password1", confirmPassword: "Password2" });
     await userEvent.click(screen.getByRole("button", { name: "Create account" }));
@@ -80,8 +96,8 @@ describe("RegisterForm validation", () => {
 
 describe("RegisterForm submission", () => {
   it("registers with a normalized payload and navigates to the homepage", async () => {
-    const register = vi.fn().mockResolvedValue(undefined);
-    render(<RegisterForm gateway={makeGateway({ register })} />);
+    const register = vi.fn().mockResolvedValue(testUser);
+    renderWithProviders(<RegisterForm gateway={makeGateway({ register })} />);
 
     await fillForm();
     await userEvent.click(screen.getByRole("button", { name: "Create account" }));
@@ -96,7 +112,7 @@ describe("RegisterForm submission", () => {
 
   it("shows the taken-email error inline and does not navigate", async () => {
     const register = vi.fn().mockRejectedValue(new AuthError("EMAIL_TAKEN"));
-    render(<RegisterForm gateway={makeGateway({ register })} />);
+    renderWithProviders(<RegisterForm gateway={makeGateway({ register })} />);
 
     await fillForm();
     await userEvent.click(screen.getByRole("button", { name: "Create account" }));
@@ -111,7 +127,7 @@ describe("RegisterForm submission", () => {
 
   it("shows a top-level alert on a network failure", async () => {
     const register = vi.fn().mockRejectedValue(new AuthError("NETWORK_ERROR"));
-    render(<RegisterForm gateway={makeGateway({ register })} />);
+    renderWithProviders(<RegisterForm gateway={makeGateway({ register })} />);
 
     await fillForm();
     await userEvent.click(screen.getByRole("button", { name: "Create account" }));

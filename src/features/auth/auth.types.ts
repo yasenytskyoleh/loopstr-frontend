@@ -1,3 +1,5 @@
+export type { AuthUser } from "./auth.schema";
+
 /** Application error codes. Adapter/transport errors are mapped to these before
  *  reaching page components (see auth-errors.ts). */
 export const AUTH_ERROR_CODES = [

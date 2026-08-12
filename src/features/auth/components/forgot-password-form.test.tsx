@@ -8,9 +8,10 @@ import { ForgotPasswordForm } from "./forgot-password-form";
 
 function makeGateway(overrides: Partial<AuthGateway> = {}): AuthGateway {
   return {
-    signIn: vi.fn().mockResolvedValue(undefined),
-    register: vi.fn().mockResolvedValue(undefined),
+    signIn: vi.fn(),
+    register: vi.fn(),
     requestPasswordReset: vi.fn().mockResolvedValue(undefined),
+    getCurrentUser: vi.fn().mockResolvedValue(null),
     ...overrides,
   };
 }

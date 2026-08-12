@@ -4,22 +4,17 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 import { BrandMark, GridIcon } from "@/components/ui/icons";
+import { formatRole, getInitials } from "@/features/auth/auth.utils";
+import { useCurrentUser } from "@/features/auth/hooks/use-current-user";
 import { catalogRoutes } from "@/features/catalog/catalog.config";
 
 import { UserMenu } from "./user-menu";
-
-/** Placeholder signed-in Member. Real identity arrives with the session work
- *  (deferred); the homepage is not route-guarded yet. */
-const CURRENT_USER = {
-  name: "Maya Lindqvist",
-  role: "Member",
-  initials: "ML",
-} as const;
 
 /** Top navigation shared by the homepage and tool-details routes. */
 export function AppHeader() {
   const pathname = usePathname();
   const onHome = pathname === catalogRoutes.home;
+  const { data: user } = useCurrentUser();
 
   return (
     <header className="border-b border-line bg-surface">
@@ -43,13 +38,15 @@ export function AppHeader() {
           Browse tools
         </Link>
 
-        <div className="ml-auto">
-          <UserMenu
-            name={CURRENT_USER.name}
-            role={CURRENT_USER.role}
-            initials={CURRENT_USER.initials}
-          />
-        </div>
+        {user && (
+          <div className="ml-auto">
+            <UserMenu
+              name={user.fullName}
+              role={formatRole(user.role)}
+              initials={getInitials(user.fullName)}
+            />
+          </div>
+        )}
       </div>
     </header>
   );

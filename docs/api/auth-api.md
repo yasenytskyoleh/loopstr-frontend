@@ -5,16 +5,36 @@ This is the contract the **frontend already calls** through its typed `AuthGatew
 endpoints; the frontend needs no changes when they come online.
 
 - **Base URL**: configured on the frontend via `NEXT_PUBLIC_API_BASE_URL`
-  (e.g. `https://api.loopstr.app`). All paths below are relative to it.
+  (e.g. `https://api.loopstr.app`). The frontend appends `/api/v1` to it
+  (`src/lib/env.ts` → `requireApiBaseUrl()`); the paths below already include that prefix.
 - **Transport**: JSON over HTTPS. Request/response bodies are `application/json`.
-- **Scope**: this covers PoC **ACC-01 Login** (and its Forgot-password entry point) and
-  **ACC-02 Registration**. There is **no two-factor / OTP step** — valid credentials sign the
-  Member in directly, and a successful registration logs the new Member in the same way. Any
-  further password-reset steps are separate, later contracts.
+- **Scope**: this covers PoC **ACC-01 Login** (and its Forgot-password entry point),
+  **ACC-02 Registration**, and **HOME-01's signed-in account read** (`GET /users/me`). There is
+  **no two-factor / OTP step** — valid credentials sign the Member in directly, and a successful
+  registration logs the new Member in the same way. Any further password-reset steps are separate,
+  later contracts.
 
 ---
 
 ## Conventions
+
+### The `User` object
+
+The signed-in account, as every session-bearing response answers it (login, register,
+`GET /users/me`). Validated on the frontend at the boundary with Zod
+(`src/features/auth/auth.schema.ts`). Every field is required.
+
+| Field      | Type                | Notes                                    |
+| ---------- | ------------------- | ----------------------------------------- |
+| `id`       | number              | Stable account id.                        |
+| `email`    | string              | Already lowercased by the backend.        |
+| `fullName` | string              | Display name — used for the header avatar initials. |
+| `role`     | `"member"`          | The only role the PoC issues.             |
+
+### The `SessionUser` envelope
+
+`{ "user": User }` — the body of every response below. Login, registration, and `GET /users/me`
+all answer through this one envelope.
 
 ### Sessions
 
@@ -62,7 +82,7 @@ Every non-2xx response uses this body:
 
 ## Endpoints
 
-### POST `/auth/login`
+### POST `/api/v1/auth/login`
 
 Authenticate credentials. On success, establish the session and return `2xx`.
 
@@ -78,8 +98,9 @@ Authenticate credentials. On success, establish the session and return `2xx`.
 | `password`   | string  |  ✓  | Sent as-is over TLS. Never logged.                                |
 | `rememberMe` | boolean |  ✓  | If true, the session cookie is persistent (~30 days).            |
 
-**Response `200`** — also sets the session cookie. The body is not consumed by the frontend
-(a 2xx is treated as success), so it may be empty or a minimal `{ "user": … }` for other clients.
+**Response `200`** — also sets the session cookie, and the body is the `SessionUser` envelope
+(`{ "user": User }`). The frontend uses it to seed the signed-in account shown in the header
+immediately, without a follow-up `GET /users/me`.
 
 **Errors**
 
@@ -90,7 +111,7 @@ Authenticate credentials. On success, establish the session and return `2xx`.
 
 ---
 
-### POST `/auth/register`
+### POST `/api/v1/auth/register`
 
 Create a Member account (ACC-02). On success, establish the session (auto-login) and return `2xx`.
 
@@ -107,7 +128,8 @@ Create a Member account (ACC-02). On success, establish the session (auto-login)
 | `password` | string |  ✓  | ≥8 chars with a letter and a number (validated client-side too). Sent as-is over TLS; never logged. |
 
 **Response `201`** — also sets the session cookie (a browser-session cookie; ACC-02 has no
-"remember me"). The new Member has the **Member** role. The body is not consumed by the frontend.
+"remember me"). The new Member has the **Member** role, and the body is the `SessionUser`
+envelope, used the same way as login's to seed the header.
 
 **Errors**
 
@@ -120,7 +142,21 @@ Create a Member account (ACC-02). On success, establish the session (auto-login)
 
 ---
 
-### POST `/auth/forgot-password`
+### GET `/api/v1/users/me`
+
+The signed-in account for the current session (HOME-01: shown in the header). Reads the session
+cookie; establishes nothing.
+
+**Response `200`** — the `SessionUser` envelope (`{ "user": User }`).
+
+**Response `403`** — no usable session cookie (never signed in, or an expired/invalid one). This
+endpoint is **not** under `/auth/*`, so on failure it answers in the project's own shape,
+`{ "detail": "…" }`, not the `{code, message}` error envelope above. The frontend treats any `403`
+here as "not signed in" and does not parse the body.
+
+---
+
+### POST `/api/v1/auth/forgot-password`
 
 Request a password-reset link (ACC-01 #5 entry point). The rest of the reset flow is out of PoC
 scope.
@@ -157,23 +193,37 @@ Any other `code` is treated as `UNKNOWN_ERROR`.
 ## Example: login
 
 ```
-POST /auth/login   { "email": "user@example.com", "password": "…", "rememberMe": true }
+POST /api/v1/auth/login   { "email": "user@example.com", "password": "…", "rememberMe": true }
 200  Set-Cookie: session=…; HttpOnly; Secure; SameSite=Lax; Max-Age=2592000
+     { "user": { "id": 1, "email": "user@example.com", "fullName": "Maya Lindqvist", "role": "member" } }
 ```
 
 ```
-POST /auth/login   { "email": "user@example.com", "password": "wrong", "rememberMe": false }
-401                { "code": "INVALID_CREDENTIALS" }
+POST /api/v1/auth/login   { "email": "user@example.com", "password": "wrong", "rememberMe": false }
+401                       { "code": "INVALID_CREDENTIALS" }
+```
+
+## Example: the signed-in account
+
+```
+GET /api/v1/users/me
+200 { "user": { "id": 1, "email": "user@example.com", "fullName": "Maya Lindqvist", "role": "member" } }
+```
+
+```
+GET /api/v1/users/me
+403 { "detail": "Authentication credentials were not provided." }
 ```
 
 ## Example: register
 
 ```
-POST /auth/register   { "fullName": "Maya Lindqvist", "email": "user@example.com", "password": "…" }
+POST /api/v1/auth/register   { "fullName": "Maya Lindqvist", "email": "user@example.com", "password": "…" }
 201  Set-Cookie: session=…; HttpOnly; Secure; SameSite=Lax     (session cookie, no Max-Age)
+     { "user": { "id": 1, "email": "user@example.com", "fullName": "Maya Lindqvist", "role": "member" } }
 ```
 
 ```
-POST /auth/register   { "fullName": "Maya Lindqvist", "email": "taken@example.com", "password": "…" }
-409                   { "code": "EMAIL_TAKEN" }
+POST /api/v1/auth/register   { "fullName": "Maya Lindqvist", "email": "taken@example.com", "password": "…" }
+409                          { "code": "EMAIL_TAKEN" }
 ```
