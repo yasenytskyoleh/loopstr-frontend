@@ -9,7 +9,8 @@ export const env = {
   },
 } as const;
 
-/** Returns the API base URL or throws — used so the app fails closed when unconfigured. */
+/** Returns the API base URL (with the `/api/v1` prefix appended) or throws — used
+ *  so the app fails closed when unconfigured. */
 export function requireApiBaseUrl(): string {
   const value = env.apiBaseUrl;
   if (!value) {
@@ -17,5 +18,5 @@ export function requireApiBaseUrl(): string {
       "NEXT_PUBLIC_API_BASE_URL is not set. The auth gateway cannot reach the backend.",
     );
   }
-  return value.replace(/\/$/, "");
+  return `${value.replace(/\/$/, "")}/api/v1`;
 }

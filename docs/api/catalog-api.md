@@ -10,7 +10,8 @@ homepage** and the read-only **Tool details** view.
 > `create-catalog-gateway.ts` (one line) — no other frontend changes are needed.
 
 - **Base URL**: configured on the frontend via `NEXT_PUBLIC_API_BASE_URL`
-  (e.g. `https://api.loopstr.app`). All paths below are relative to it.
+  (e.g. `https://api.loopstr.app`). The frontend appends `/api/v1` to it
+  (`src/lib/env.ts` → `requireApiBaseUrl()`); the paths below already include that prefix.
 - **Transport**: JSON over HTTPS. Response bodies are `application/json`.
 - **Scope**: **browse-only** (HOME-01 AC #7). There are **no** reservation, booking, or waitlist
   endpoints anywhere in this contract.
@@ -48,7 +49,7 @@ Photo hosts must be allow-listed in `next.config.ts` (`images.remotePatterns`) f
 
 ---
 
-## `GET /tools`
+## `GET /api/v1/tools`
 
 Returns the tool catalog as a `Tool[]`.
 
@@ -86,7 +87,7 @@ an array, not a paged envelope).
 ### Example
 
 ```
-GET /tools
+GET /api/v1/tools
 → 200 OK
 [
   {
@@ -102,14 +103,14 @@ GET /tools
   }
 ]
 
-GET /tools?category=Power%20tools&q=drill
+GET /api/v1/tools?category=Power%20tools&q=drill
 → 200 OK
 [ { "id": "dewalt-dcd791-drill", … }, { "id": "dewalt-dcd791-drill-unit-2", … } ]
 ```
 
 ---
 
-## `GET /tools/{id}`
+## `GET /api/v1/tools/{id}`
 
 Returns a single `Tool` for the details view. No query parameters.
 
@@ -131,10 +132,10 @@ Returns a single `Tool` for the details view. No query parameters.
 ### Example
 
 ```
-GET /tools/dewalt-dcd791-drill
+GET /api/v1/tools/dewalt-dcd791-drill
 → 200 OK
 { "id": "dewalt-dcd791-drill", "name": "DeWalt DCD791 Cordless Drill", … }
 
-GET /tools/does-not-exist
+GET /api/v1/tools/does-not-exist
 → 404 Not Found
 ```

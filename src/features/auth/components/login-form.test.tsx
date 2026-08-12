@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -12,13 +13,28 @@ import { AuthError } from "../auth-errors";
 import type { AuthGateway } from "../gateway/auth-gateway";
 import { LoginForm } from "./login-form";
 
+const testUser = {
+  id: 1,
+  email: "user@example.com",
+  fullName: "Maya Lindqvist",
+  role: "member" as const,
+};
+
 function makeGateway(overrides: Partial<AuthGateway> = {}): AuthGateway {
   return {
-    signIn: vi.fn().mockResolvedValue(undefined),
-    register: vi.fn().mockResolvedValue(undefined),
+    signIn: vi.fn().mockResolvedValue(testUser),
+    register: vi.fn().mockResolvedValue(testUser),
     requestPasswordReset: vi.fn().mockResolvedValue(undefined),
+    getCurrentUser: vi.fn().mockResolvedValue(null),
     ...overrides,
   };
+}
+
+function renderWithProviders(ui: React.ReactElement) {
+  const queryClient = new QueryClient();
+  return render(
+    <QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>,
+  );
 }
 
 async function fillCredentials(email = "User@Example.com", password = "s3cret") {
@@ -33,7 +49,7 @@ beforeEach(() => {
 
 describe("LoginForm validation", () => {
   it("keeps Log in disabled until both fields are filled", async () => {
-    render(<LoginForm gateway={makeGateway()} />);
+    renderWithProviders(<LoginForm gateway={makeGateway()} />);
     const submit = screen.getByRole("button", { name: "Log in" });
 
     expect(submit).toBeDisabled();
@@ -45,7 +61,7 @@ describe("LoginForm validation", () => {
 
   it("shows an error and blocks submission for a malformed email", async () => {
     const gateway = makeGateway();
-    render(<LoginForm gateway={gateway} />);
+    renderWithProviders(<LoginForm gateway={gateway} />);
 
     await userEvent.type(screen.getByLabelText("Email"), "not-an-email");
     await userEvent.type(screen.getByLabelText("Password"), "pw");
@@ -60,8 +76,8 @@ describe("LoginForm validation", () => {
 
 describe("LoginForm submission", () => {
   it("normalizes the email and navigates to the homepage on success", async () => {
-    const signIn = vi.fn().mockResolvedValue(undefined);
-    render(<LoginForm gateway={makeGateway({ signIn })} />);
+    const signIn = vi.fn().mockResolvedValue(testUser);
+    renderWithProviders(<LoginForm gateway={makeGateway({ signIn })} />);
 
     await userEvent.click(screen.getByLabelText("Remember me for 30 days"));
     await fillCredentials();
@@ -76,8 +92,8 @@ describe("LoginForm submission", () => {
   });
 
   it("submits with Enter when the form is valid", async () => {
-    const signIn = vi.fn().mockResolvedValue(undefined);
-    render(<LoginForm gateway={makeGateway({ signIn })} />);
+    const signIn = vi.fn().mockResolvedValue(testUser);
+    renderWithProviders(<LoginForm gateway={makeGateway({ signIn })} />);
 
     await userEvent.type(screen.getByLabelText("Email"), "user@example.com");
     await userEvent.type(screen.getByLabelText("Password"), "s3cret{Enter}");
@@ -89,11 +105,11 @@ describe("LoginForm submission", () => {
     let resolve: (() => void) | undefined;
     const signIn = vi.fn(
       () =>
-        new Promise<void>((r) => {
-          resolve = () => r();
+        new Promise<typeof testUser>((r) => {
+          resolve = () => r(testUser);
         }),
     );
-    render(<LoginForm gateway={makeGateway({ signIn })} />);
+    renderWithProviders(<LoginForm gateway={makeGateway({ signIn })} />);
 
     await fillCredentials();
     const submit = screen.getByRole("button", { name: "Log in" });
@@ -110,7 +126,7 @@ describe("LoginForm submission", () => {
 describe("LoginForm errors", () => {
   it("shows generic copy and preserves email but clears password on invalid credentials", async () => {
     const signIn = vi.fn().mockRejectedValue(new AuthError("INVALID_CREDENTIALS"));
-    render(<LoginForm gateway={makeGateway({ signIn })} />);
+    renderWithProviders(<LoginForm gateway={makeGateway({ signIn })} />);
 
     await fillCredentials("user@example.com", "wrong-password");
     await userEvent.click(screen.getByRole("button", { name: "Log in" }));
@@ -129,7 +145,7 @@ describe("LoginForm errors", () => {
 
   it("shows the account-locked message", async () => {
     const signIn = vi.fn().mockRejectedValue(new AuthError("ACCOUNT_LOCKED"));
-    render(<LoginForm gateway={makeGateway({ signIn })} />);
+    renderWithProviders(<LoginForm gateway={makeGateway({ signIn })} />);
 
     await fillCredentials();
     await userEvent.click(screen.getByRole("button", { name: "Log in" }));
@@ -141,7 +157,7 @@ describe("LoginForm errors", () => {
 
   it("shows the network-failure message", async () => {
     const signIn = vi.fn().mockRejectedValue(new AuthError("NETWORK_ERROR"));
-    render(<LoginForm gateway={makeGateway({ signIn })} />);
+    renderWithProviders(<LoginForm gateway={makeGateway({ signIn })} />);
 
     await fillCredentials();
     await userEvent.click(screen.getByRole("button", { name: "Log in" }));

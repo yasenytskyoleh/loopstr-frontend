@@ -4,6 +4,12 @@ import { HttpAuthGateway } from "./http-auth-gateway";
 
 const gateway = new HttpAuthGateway("https://api.test");
 const credentials = { email: "a@b.com", password: "pw", rememberMe: false };
+const sessionUser = {
+  id: 1,
+  email: "a@b.com",
+  fullName: "Maya Lindqvist",
+  role: "member" as const,
+};
 
 function mockFetch(value: { ok: boolean; status: number; body?: unknown }) {
   const fetchMock = vi.fn().mockResolvedValue({
@@ -18,10 +24,14 @@ function mockFetch(value: { ok: boolean; status: number; body?: unknown }) {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("HttpAuthGateway.signIn", () => {
-  it("posts credentials to /auth/login with cookies and resolves on 2xx", async () => {
-    const fetchMock = mockFetch({ ok: true, status: 200 });
+  it("posts credentials to /auth/login with cookies and resolves the signed-in account", async () => {
+    const fetchMock = mockFetch({
+      ok: true,
+      status: 200,
+      body: { user: sessionUser },
+    });
 
-    await expect(gateway.signIn(credentials)).resolves.toBeUndefined();
+    await expect(gateway.signIn(credentials)).resolves.toEqual(sessionUser);
 
     expect(fetchMock).toHaveBeenCalledWith(
       "https://api.test/auth/login",
@@ -70,10 +80,14 @@ describe("HttpAuthGateway.signIn", () => {
 describe("HttpAuthGateway.register", () => {
   const account = { fullName: "Maya Lindqvist", email: "a@b.com", password: "pw123456" };
 
-  it("posts the account to /auth/register with cookies and resolves on 2xx", async () => {
-    const fetchMock = mockFetch({ ok: true, status: 201 });
+  it("posts the account to /auth/register with cookies and resolves the signed-in account", async () => {
+    const fetchMock = mockFetch({
+      ok: true,
+      status: 201,
+      body: { user: sessionUser },
+    });
 
-    await expect(gateway.register(account)).resolves.toBeUndefined();
+    await expect(gateway.register(account)).resolves.toEqual(sessionUser);
 
     expect(fetchMock).toHaveBeenCalledWith(
       "https://api.test/auth/register",
@@ -119,5 +133,41 @@ describe("HttpAuthGateway.requestPasswordReset", () => {
     await expect(
       gateway.requestPasswordReset({ email: "a@b.com" }),
     ).rejects.toMatchObject({ code: "NETWORK_ERROR" });
+  });
+});
+
+describe("HttpAuthGateway.getCurrentUser", () => {
+  it("gets /users/me with cookies and resolves the signed-in account", async () => {
+    const fetchMock = mockFetch({
+      ok: true,
+      status: 200,
+      body: { user: sessionUser },
+    });
+
+    await expect(gateway.getCurrentUser()).resolves.toEqual(sessionUser);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://api.test/users/me",
+      expect.objectContaining({ credentials: "include" }),
+    );
+  });
+
+  it("resolves null when there is no usable session (403)", async () => {
+    mockFetch({ ok: false, status: 403, body: { detail: "Not signed in" } });
+    await expect(gateway.getCurrentUser()).resolves.toBeNull();
+  });
+
+  it("throws UNKNOWN_ERROR on an unexpected non-2xx status", async () => {
+    mockFetch({ ok: false, status: 500, body: {} });
+    await expect(gateway.getCurrentUser()).rejects.toMatchObject({
+      code: "UNKNOWN_ERROR",
+    });
+  });
+
+  it("throws NETWORK_ERROR on a transport failure", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("offline")));
+    await expect(gateway.getCurrentUser()).rejects.toMatchObject({
+      code: "NETWORK_ERROR",
+    });
   });
 });

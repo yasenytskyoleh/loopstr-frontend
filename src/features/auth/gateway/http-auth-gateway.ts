@@ -1,8 +1,10 @@
 import { z } from "zod";
 
 import { AuthError, isAuthErrorCode } from "../auth-errors";
+import { sessionUserSchema } from "../auth.schema";
 import type {
   AuthErrorCode,
+  AuthUser,
   RegisterInput,
   RequestPasswordResetInput,
   SignInInput,
@@ -31,12 +33,12 @@ const STATUS_ERROR_CODES: Record<number, AuthErrorCode> = {
 export class HttpAuthGateway implements AuthGateway {
   constructor(private readonly baseUrl: string) {}
 
-  async signIn(input: SignInInput): Promise<void> {
-    await this.post("/auth/login", input);
+  async signIn(input: SignInInput): Promise<AuthUser> {
+    return this.post("/auth/login", input);
   }
 
-  async register(input: RegisterInput): Promise<void> {
-    await this.post("/auth/register", input);
+  async register(input: RegisterInput): Promise<AuthUser> {
+    return this.post("/auth/register", input);
   }
 
   async requestPasswordReset(input: RequestPasswordResetInput): Promise<void> {
@@ -46,11 +48,34 @@ export class HttpAuthGateway implements AuthGateway {
     await this.fetchJson("/auth/forgot-password", input);
   }
 
-  private async post(path: string, payload: unknown): Promise<void> {
+  async getCurrentUser(): Promise<AuthUser | null> {
+    let response: Response;
+    try {
+      response = await fetch(`${this.baseUrl}/users/me`, {
+        headers: { Accept: "application/json" },
+        credentials: "include",
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      });
+    } catch {
+      throw new AuthError("NETWORK_ERROR");
+    }
+    // No usable session cookie — DRF's own `{"detail": ...}` shape, not the
+    // `/auth/*` error envelope, so the body is intentionally not read here.
+    if (response.status === 403) {
+      return null;
+    }
+    if (!response.ok) {
+      throw new AuthError("UNKNOWN_ERROR");
+    }
+    return sessionUserSchema.parse(await response.json()).user;
+  }
+
+  private async post(path: string, payload: unknown): Promise<AuthUser> {
     const response = await this.fetchJson(path, payload);
     if (!response.ok) {
       throw await this.toError(response);
     }
+    return sessionUserSchema.parse(await response.json()).user;
   }
 
   private async fetchJson(path: string, payload: unknown): Promise<Response> {
